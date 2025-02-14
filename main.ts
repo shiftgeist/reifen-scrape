@@ -6,25 +6,23 @@ const base = 'https://www.reifendirekt.de'
 
 type ResultEntry = {
   manufacturer: string
-  frontName: string
+  name: string
   frontPrice: number
-  frontLink: string
-  backName: string
   backPrice: number
+  setPrice: number
+  frontLink: string
   backLink: string
-  sum: number
   reportLink?: string | undefined | null
 }
 
 const keys: Array<keyof ResultEntry> = [
   'manufacturer',
-  'frontName',
+  'name',
   'frontPrice',
   'frontLink',
-  'backName',
   'backPrice',
   'backLink',
-  'sum',
+  'setPrice',
   'reportLink',
 ]
 
@@ -73,8 +71,7 @@ function parsePage(html: HTMLDocument, context: string) {
       assert(products.length === 2, `⛔️ [${context}] Did not find all products`)
 
       const names = products.map(el => el.innerText.trim())
-      resultEntry.frontName = names[0]
-      resultEntry.backName = names[1]
+      resultEntry.name = names[0] === names[1] ? names[0] : `${names[0]} / ${names[1]}`
 
       const links = products.map(p => p.getAttribute('href'))
       assert(
@@ -111,7 +108,7 @@ function parsePage(html: HTMLDocument, context: string) {
       assert(priceBundleRaw !== undefined, `⛔️ [${context}] Bundle price not found`)
       const priceBundle = parsePrice(priceBundleRaw)
       assert(typeof priceBundle === 'number', `⛔️ [${context}] Bundle price is not number`)
-      resultEntry.sum = priceBundle
+      resultEntry.setPrice = priceBundle
 
       results.push(resultEntry)
     })
