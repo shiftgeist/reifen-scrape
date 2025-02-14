@@ -1,6 +1,6 @@
 import { DOMParser, HTMLDocument } from 'jsr:@b-fuze/deno-dom'
 import { assert } from 'jsr:@std/assert'
-import { DataItem, stringify } from 'jsr:@std/csv/stringify'
+import { DataItem, stringify } from 'jsr:@std/csv'
 
 const base = 'https://www.reifendirekt.de'
 
@@ -28,15 +28,6 @@ const keys: Array<keyof ResultEntry> = [
 
 const results: Array<ResultEntry> = []
 
-function validInput(url: string) {
-  assert(url.includes('manufacturer='), 'No manufacturer given')
-  assert(url.includes('capacity='), 'No capacity given')
-  assert(url.includes('model='), 'No model given')
-  assert(url.includes('type='), 'No type given')
-
-  return url.includes('itemsPerPage') ? url : url + '&itemsPerPage=50'
-}
-
 async function writeCsv(path: string, data: DataItem[]) {
   const csv = stringify(data, {
     headers: true,
@@ -58,26 +49,25 @@ function parseManufacturer(link: string) {
 }
 
 function parsePage(html: HTMLDocument, context: string) {
+  const pre = `⛔️ [${context}] `
+
   return new Promise(resolve => {
     const rows = Array.from(html.querySelectorAll('.tyre_row')).filter(
       el => !el.classList.contains('tyre_row_heading')
     )
-    assert(rows.length > 0, `⛔️ [${context}] No rows found`)
+    assert(rows.length > 0, pre + `No rows found`)
 
     rows.forEach(row => {
       const resultEntry: ResultEntry = {} as ResultEntry
 
       const products = Array.from(row.querySelectorAll('.moto-tyre-subtitle a'))
-      assert(products.length === 2, `⛔️ [${context}] Did not find all products`)
+      assert(products.length === 2, pre + `Did not find all products`)
 
       const names = products.map(el => el.innerText.trim())
       resultEntry.name = names[0] === names[1] ? names[0] : `${names[0]} / ${names[1]}`
 
       const links = products.map(p => p.getAttribute('href'))
-      assert(
-        links.filter(l => !!l && l.length > 0)?.length === 2,
-        `⛔️ [${context}] Not all links are valid`
-      )
+      assert(links.filter(l => !!l && l.length > 0)?.length === 2, pre + `Not all links are valid`)
       const fullLinks = links.map(l => base + l)
       resultEntry.frontLink = fullLinks[0]
       resultEntry.backLink = fullLinks[1]
@@ -85,15 +75,9 @@ function parsePage(html: HTMLDocument, context: string) {
       const prices = Array.from(row.querySelectorAll('.moto-tyre-cart')).map(el =>
         parsePrice(el.innerText)
       )
-      assert(prices.length === 2, `⛔️ [${context}] Did not find both prices`)
-      assert(
-        typeof prices[0] === 'number',
-        `⛔️ [${context}] First price not a number (${prices[0]})`
-      )
-      assert(
-        typeof prices[1] === 'number',
-        `⛔️ [${context}] Second price not a number (${prices[1]})`
-      )
+      assert(prices.length === 2, pre + `Did not find both prices`)
+      assert(typeof prices[0] === 'number', pre + `First price not a number (${prices[0]})`)
+      assert(typeof prices[1] === 'number', pre + `Second price not a number (${prices[1]})`)
       resultEntry.frontPrice = prices[0]
       resultEntry.backPrice = prices[1]
 
@@ -105,9 +89,9 @@ function parsePage(html: HTMLDocument, context: string) {
       resultEntry.manufacturer = reportLink ? parseManufacturer(reportLink) : '?'
 
       const priceBundleRaw = row.querySelector('.moto-price-bundle')?.innerText
-      assert(priceBundleRaw !== undefined, `⛔️ [${context}] Bundle price not found`)
+      assert(priceBundleRaw !== undefined, pre + `Bundle price not found`)
       const priceBundle = parsePrice(priceBundleRaw)
-      assert(typeof priceBundle === 'number', `⛔️ [${context}] Bundle price is not number`)
+      assert(typeof priceBundle === 'number', pre + `Bundle price is not number`)
       resultEntry.setPrice = priceBundle
 
       results.push(resultEntry)
@@ -117,40 +101,8 @@ function parsePage(html: HTMLDocument, context: string) {
   })
 }
 
-async function scrapePage(url: string, id: string) {
-  console.log(`🤖 Scraping ${url}`)
-
-  try {
-    const res = await fetch(url)
-    const html = await res.text()
-    assert(html.length > 0, `⛔️ [${url}] HTML Length is 0`)
-
-    const document = new DOMParser().parseFromString(html, 'text/html')
-
-    const pageLinks = document.querySelectorAll('.pageLink')
-    assert(pageLinks.length > 0, `⛔️ [${url}] No page links found`)
-
-    const pageLink = Array.from(pageLinks).find(link => link.innerText.trim() === '›')
-    assert(pageLink !== undefined, `⛔️ [${url}] No page link found`)
-
-    const nextPageLink = pageLink?.getAttribute('href')
-
-    await parsePage(document, url)
-
-    await writeCsv(`${id}.csv`, results)
-
-    if (!nextPageLink || (nextPageLink && nextPageLink.length < 2)) {
-      console.log(`✅ Done (No more pages found)`)
-      return
-    }
-
-    await new Promise(res => setTimeout(res, 1000))
-
-    assert(!!nextPageLink)
-    await scrapePage(nextPageLink, id)
-  } catch (error) {
-    console.error(`⛔️ ${error}`)
-  }
+function parseUrl(url: string) {
+  return url.includes('itemsPerPage') ? url : url + '&itemsPerPage=50'
 }
 
 function parseSearchURLToID(url: string) {
@@ -169,18 +121,44 @@ function parseSearchURLToID(url: string) {
     .join('-')
 }
 
-if (!Deno.args[0]) {
-  console.log(
-    'Goto https://www.reifendirekt.de/Motorradreifen.html - "Motorrad-Auswahl", enter your bike and paste the search link (see README.md)'
-  )
+export async function scrapePage(inputUrl: string) {
+  const pre = `⛔️ [${inputUrl}] `
+
+  assert(inputUrl.length > 0, pre + `No input URL given`)
+  console.log(`🤖 Scraping ${inputUrl}`)
+
+  try {
+    const url = parseUrl(inputUrl)
+    const id = parseSearchURLToID(inputUrl)
+
+    const res = await fetch(url)
+    const html = await res.text()
+    assert(html.length > 0, pre + `HTML Length is 0`)
+
+    const document = new DOMParser().parseFromString(html, 'text/html')
+
+    const pageLinks = document.querySelectorAll('.pageLink')
+    assert(pageLinks.length > 0, pre + `No page links found`)
+
+    const pageLink = Array.from(pageLinks).find(link => link.innerText.trim() === '›')
+    assert(pageLink !== undefined, pre + `No page link found`)
+
+    const nextPageLink = pageLink?.getAttribute('href')
+
+    await parsePage(document, url)
+
+    await writeCsv(`${id}.csv`, results)
+
+    if (!nextPageLink || (nextPageLink && nextPageLink.length < 2)) {
+      console.log(`✅ Done`)
+      return
+    }
+
+    await new Promise(res => setTimeout(res, 1000))
+
+    assert(!!nextPageLink)
+    await scrapePage(nextPageLink)
+  } catch (error) {
+    console.error(pre + error)
+  }
 }
-
-const search = validInput(Deno.args[0])
-
-const id = parseSearchURLToID(search)
-
-await scrapePage(search, id)
-
-// Examples
-// https://www.reifendirekt.de/search-moto?manufacturer=SUZUKI&capacity=1200&model=GSF%201200%20%2F%20S%20(2001%20-%202005)&type=WVA9&isSearchByMoto=true
-// https://www.reifendirekt.de/search-moto?manufacturer=SUZUKI&capacity=400&model=DR-Z%20400%20SM%20(2005%20-%202008)&type=WVB8&brand=&isSearchByMoto=true&pageNoFull=1&itemsPerPage=7
