@@ -4,7 +4,7 @@
 
 1. Have [deno installed](https://docs.deno.com/runtime/getting_started/installation/)
 2. Clone repository
-3. Go to `https://www.reifendirekt.de/Motorradreifen.html - "Motorrad-Auswahl"`
+3. Go to [`https://www.reifendirekt.de/Motorradreifen.html - "Motorrad-Auswahl"`](https://www.reifendirekt.de/Motorradreifen.html)
 4. Copy URL
 5. Run reifen-scrape with URL`deno run --allow-net --allow-write main.ts "$URL"`
 
